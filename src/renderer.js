@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { settings } from './settings.js';
 
 // Custom post pass: vignette + chromatic aberration + subtle film grain.
 const FinishShader = {
@@ -108,8 +109,24 @@ export class Renderer {
     this._shake = new THREE.Vector2();
     this._shakeAmount = 0;
 
+    // Base post-processing values so reduced-motion can re-derive live.
+    this._baseAberration = this.finish.uniforms.uAberration.value;
+    this._baseGrain = this.finish.uniforms.uGrain.value;
+    this._baseBloom = this.bloom.strength;
+    this._applyMotionPrefs();
+    settings.onChange((k) => {
+      if (k === 'reducedMotion') this._applyMotionPrefs();
+    });
+
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  _applyMotionPrefs() {
+    const reduced = settings.get('reducedMotion');
+    this.finish.uniforms.uAberration.value = reduced ? 0 : this._baseAberration;
+    this.finish.uniforms.uGrain.value = reduced ? 0 : this._baseGrain;
+    this.bloom.strength = reduced ? Math.min(0.35, this._baseBloom) : this._baseBloom;
   }
 
   resize() {
@@ -123,13 +140,14 @@ export class Renderer {
   }
 
   shake(amount) {
+    if (settings.get('reducedMotion')) return;
     this._shakeAmount = Math.min(1.0, this._shakeAmount + amount);
   }
 
   render(dt, time) {
     // Update shake
     this._shakeAmount = Math.max(0, this._shakeAmount - dt * 1.2);
-    const s = this._shakeAmount;
+    const s = settings.get('reducedMotion') ? 0 : this._shakeAmount;
     this._shake.set((Math.random() - 0.5) * 0.018 * s, (Math.random() - 0.5) * 0.018 * s);
     this.finish.uniforms.uTime.value = time;
     this.finish.uniforms.uShake.value.copy(this._shake);

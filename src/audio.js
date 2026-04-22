@@ -1,17 +1,27 @@
 // Fully-synthesized audio: adaptive music + SFX via WebAudio. No external assets.
+import { settings } from './settings.js';
+
 export class Audio {
   constructor() {
     this.ctx = null;
     this.master = null;
     this.musicGain = null;
     this.sfxGain = null;
-    this.muted = false;
+    this.muted = settings.get('muted');
     this._started = false;
     this._musicNodes = [];
     this._intensity = 0; // 0..1 ramps with wave/action
     this._tempo = 108;
     this._stepInterval = null;
     this._step = 0;
+
+    // React to settings changes live.
+    settings.onChange((key) => {
+      if (!this._started) return;
+      if (key === 'masterVolume' || key === 'muted') this._applyMaster();
+      if (key === 'musicVolume') this._applyMusic();
+      if (key === 'sfxVolume') this._applySfx();
+    });
   }
 
   ensureStarted() {
@@ -20,26 +30,41 @@ export class Audio {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.9;
-    this.master.connect(this.ctx.destination);
-
     this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.35;
-    this.musicGain.connect(this.master);
-
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.8;
+    this.master.connect(this.ctx.destination);
+    this.musicGain.connect(this.master);
     this.sfxGain.connect(this.master);
-
+    this._applyMaster();
+    this._applyMusic();
+    this._applySfx();
     this._started = true;
+  }
+
+  _applyMaster() {
+    if (!this.master) return;
+    // Mirror the canonical value from settings into this.muted so external
+    // callers (the M hotkey, UI toggle, etc.) stay in sync with a single source
+    // of truth.
+    this.muted = !!settings.get('muted');
+    const target = this.muted ? 0 : settings.get('masterVolume');
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.linearRampToValueAtTime(target, t + 0.12);
+  }
+  _applyMusic() {
+    if (!this.musicGain) return;
+    this.musicGain.gain.setTargetAtTime(settings.get('musicVolume'), this.ctx.currentTime, 0.05);
+  }
+  _applySfx() {
+    if (!this.sfxGain) return;
+    this.sfxGain.gain.setTargetAtTime(settings.get('sfxVolume'), this.ctx.currentTime, 0.05);
   }
 
   setMuted(v) {
     this.muted = v;
-    if (!this.master) return;
-    const t = this.ctx.currentTime;
-    this.master.gain.cancelScheduledValues(t);
-    this.master.gain.linearRampToValueAtTime(v ? 0 : 0.9, t + 0.15);
+    settings.set('muted', !!v);
+    this._applyMaster();
   }
 
   setIntensity(v) { this._intensity = Math.max(0, Math.min(1, v)); }
