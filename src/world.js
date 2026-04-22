@@ -120,8 +120,8 @@ export class World {
           float halo = smoothstep(0.5, 0.12, r) * 0.6;
           float rays = abs(sin(atan(c.y, c.x) * 12.0 + uTime * 0.3)) * smoothstep(0.5, 0.3, r) * 0.4;
           vec3 col = mix(vec3(1.0, 0.6, 0.85), vec3(0.5, 0.8, 1.0), smoothstep(0.0, 0.5, r));
-          col *= core + halo + rays;
-          col *= 1.5 + 0.4 * sin(uTime * 0.8);
+          col *= core * 0.8 + halo * 0.55 + rays * 0.6;
+          col *= 0.9 + 0.25 * sin(uTime * 0.8);
           gl_FragColor = vec4(col, core + halo * 0.9 + rays * 0.8);
         }
       `,
@@ -130,8 +130,8 @@ export class World {
       depthTest: false,
       blending: THREE.AdditiveBlending,
     });
-    this.sun = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), sunMat);
-    this.sun.position.set(-280, 140, -700);
+    this.sun = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), sunMat);
+    this.sun.position.set(-220, 110, -640);
     this.sun.renderOrder = -9;
     scene.add(this.sun);
 

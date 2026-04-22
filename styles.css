@@ -166,7 +166,8 @@ kbd {
 .stat.center { text-align: center; }
 .stat.right { text-align: right; }
 .stat .label {
-  font-size: 10px; letter-spacing: 0.4em; color: var(--muted); margin-bottom: 4px;
+  font-size: 11px; letter-spacing: 0.4em; color: var(--ink); opacity: 0.65; margin-bottom: 4px;
+  text-shadow: 0 0 10px rgba(93, 200, 255, 0.4);
 }
 .stat .value {
   font-size: 28px; font-weight: 800; letter-spacing: 0.08em;

@@ -109,6 +109,10 @@ class Game {
     this._pickupTimer = 3;
     this.distance = 0;
 
+    // Seed the scene with a few asteroids and a crystal so there's immediate action.
+    for (let i = 0; i < 4; i++) this._spawnAsteroid();
+    this._spawnPickup();
+
     this.hud.hideCombo();
     this.hud.update(this._hudState());
     this.state = STATE.PLAYING;
