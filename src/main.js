@@ -85,7 +85,11 @@ class Game {
     });
 
     window.addEventListener('keydown', (e) => {
+      const settingsOpen = !this.hud.el.settings?.classList.contains('hidden');
       if (e.code === 'KeyP' || e.code === 'Escape') {
+        // Escape/P while settings is open should close settings, not
+        // accidentally toggle pause behind it.
+        if (settingsOpen) { this._closeSettings(); return; }
         if (this.state === STATE.PLAYING) this._pause();
         else if (this.state === STATE.PAUSED) this._resume();
       }
@@ -94,6 +98,7 @@ class Game {
         this.audio.setMuted(!this.audio.muted);
       }
       if (e.code === 'Enter') {
+        if (settingsOpen) return;
         if (this.state === STATE.TITLE || this.state === STATE.OVER) this.start();
       }
     });
@@ -300,6 +305,13 @@ class Game {
     const src = this._settingsSourceOverlay;
     if (src) this.hud.show(src);
     this._settingsSourceOverlay = null;
+    // If settings was opened during active gameplay (e.g. via the Ctrl+Shift+D
+    // admin shortcut), _openSettings silently paused us. Resume now so the
+    // player isn't left frozen behind an invisible pause state.
+    if (this._settingsReturnState === STATE.PLAYING && this.state === STATE.PAUSED) {
+      this._resume();
+    }
+    this._settingsReturnState = null;
   }
 
   _renderLeaderboard() {
@@ -320,6 +332,12 @@ class Game {
     this.audio.ensureStarted();
     this.audio.setIntensity(0.1);
     this.audio.startMusic();
+
+    // Close the settings panel if start() was invoked while it was open
+    // (e.g. user pressed Enter on an admin-only field).
+    this.hud.hide('settings');
+    this._settingsSourceOverlay = null;
+    this._settingsReturnState = null;
 
     this.hud.hide('start');
     this.hud.hide('over');
@@ -587,6 +605,16 @@ class Game {
         ud.hp = Math.max(0, ud.hp - Math.ceil(ud.maxHp * 0.12));
       } else {
         ud.hp = Math.max(0, ud.hp - Math.ceil(ud.maxHp * 0.03));
+      }
+      // If the bomb was the killing blow, finish the boss here — otherwise it
+      // would linger at 0 HP until another bullet connects.
+      if (ud.hp <= 0 && !ud.dead) {
+        ud.dead = true;
+        this._addScore(10000 + 2000 * (ud.tier || 1));
+        this.hud.pickupToast('BOSS DOWN');
+        this.audio.explosion(2.0);
+        this.renderer.shake(1.0);
+        this.boss.destroyAndDrop(this.pickups, this.particles);
       }
     }
   }
