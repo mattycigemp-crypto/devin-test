@@ -427,20 +427,32 @@ export class Pickups {
       }
       // Despawn far behind
       if (p.position.z - playerPos.z > 120 || d > 350) {
-        this.scene.remove(p);
+        this._dispose(p);
         this.items.splice(i, 1);
       }
     }
   }
 
-  remove(p) {
+  // Each pickup is built with a fresh geometry + material (so per-kind shapes
+  // and colors stay independent); we must explicitly release their GPU-side
+  // buffers here, otherwise asteroids / enemies / bosses steadily leak vertex
+  // buffers and material state over a long session.
+  _dispose(p) {
     this.scene.remove(p);
+    if (p.geometry) p.geometry.dispose();
+    const m = p.material;
+    if (Array.isArray(m)) { for (const mm of m) mm?.dispose?.(); }
+    else if (m && typeof m.dispose === 'function') m.dispose();
+  }
+
+  remove(p) {
+    this._dispose(p);
     const i = this.items.indexOf(p);
     if (i >= 0) this.items.splice(i, 1);
   }
 
   clear() {
-    for (const p of this.items) this.scene.remove(p);
+    for (const p of this.items) this._dispose(p);
     this.items.length = 0;
   }
 }
@@ -546,7 +558,7 @@ export class Enemies {
 }
 
 // ---------- Boss ----------
-// A single slow-moving, heavily-armored enemy that appears on wave 5, 10, 15 …
+// A single slow-moving, heavily-armored enemy that appears on waves 3, 6, 9 …
 // Features: three orbiting turrets that each fire, central core with its own
 // hp. Destroying all three turrets exposes the core; destroying the core kills
 // the boss and drops a guaranteed shield + multishot + pulse bomb.
@@ -564,7 +576,8 @@ export class Boss {
     const root = new THREE.Group();
     root.position.copy(pos);
 
-    const tier = Math.max(1, Math.floor(waveNum / 5)); // grows every 5 waves
+    // Bosses spawn every 3 waves, so tier up on the same cadence.
+    const tier = Math.max(1, Math.floor(waveNum / 3));
     const coreHp = 180 * tier;
     const turretHp = 40 * tier;
 
