@@ -11,8 +11,9 @@ import { clamp, rand, randi, chance, tmp } from './utils.js';
 import { settings } from './settings.js';
 import { leaderboard } from './leaderboard.js';
 import { TouchControls, isTouchLikely } from './touch.js';
+import { Cinematic } from './cinematic.js';
 
-const STATE = { LOADING: 'loading', TITLE: 'title', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over' };
+const STATE = { LOADING: 'loading', TITLE: 'title', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over', CINEMATIC: 'cinematic' };
 
 class Game {
   constructor() {
@@ -33,6 +34,7 @@ class Game {
     this.input = new Input(this.canvas);
     this.audio = new Audio();
     this.touch = new TouchControls(this.input);
+    this.cinematic = new Cinematic(this);
 
     this.state = STATE.LOADING;
     this.time = 0;
@@ -83,9 +85,15 @@ class Game {
       this._resume();
       this.quitToTitle();
     });
+    const cineBtn = document.getElementById('cinematic-btn');
+    if (cineBtn) cineBtn.addEventListener('click', () => this.startCinematic());
 
     window.addEventListener('keydown', (e) => {
       const settingsOpen = !this.hud.el.settings?.classList.contains('hidden');
+      if (e.code === 'Escape' && this.state === STATE.CINEMATIC) {
+        this.stopCinematic();
+        return;
+      }
       if (e.code === 'KeyP' || e.code === 'Escape') {
         // Escape/P while settings is open should close settings, not
         // accidentally toggle pause behind it.
@@ -379,6 +387,39 @@ class Game {
     this.hud.hide('pause');
     this.hud.show('start');
     this.audio.stopMusic();
+  }
+
+  startCinematic() {
+    // Reset into a clean run first (reuses start()'s scene reset), then
+    // immediately flip to CINEMATIC so gameplay systems tick without
+    // accepting player input. The cinematic driver pushes virtual input
+    // each frame and overrides the camera after ship update.
+    this.start();
+    this.input.setEnabled(false);
+    this.hud.hide('hud');
+    this.state = STATE.CINEMATIC;
+    // Bump density so the director has more to film — spawn a few extra
+    // asteroids and one enemy right away instead of waiting for the
+    // pacing timers.
+    for (let i = 0; i < 4; i++) this._spawnAsteroid();
+    this._spawnEnemy();
+    this._spawnPickup();
+    this._spawnTimer = 0.4;
+    this._enemySpawnTimer = 2;
+    this._pickupTimer = 4;
+    this.audio.setIntensity(0.6);
+    this.cinematic.start();
+  }
+
+  stopCinematic() {
+    this.cinematic.stop();
+    // Wipe the scene we just filmed and return to the title screen.
+    this.asteroids.clear();
+    this.pickups.clear();
+    this.enemies.clear();
+    this.boss.clear();
+    for (let i = this.bullets.active.length - 1; i >= 0; i--) this.bullets.kill(this.bullets.active[i]);
+    this.quitToTitle();
   }
 
   _pause(silent = false) {
@@ -811,6 +852,22 @@ class Game {
       }
 
       this.hud.update(this._hudState());
+    } else if (this.state === STATE.CINEMATIC) {
+      // Autopilot drives the ship; director overrides the camera after.
+      this.cinematic.drive(dt);
+      this.ship.update(dt, this.input, this.camera);
+      this._fire(dt);
+      this.bullets.update(dt);
+      this.asteroids.update(dt, this.ship);
+      this.enemies.update(dt, this.ship, this.bullets, this.audio);
+      this.boss.update(dt, this.ship, this.bullets, this.audio);
+      this.pickups.update(dt, this.ship);
+      this.particles.update(dt);
+      this._spawnWaveContent(dt);
+      this._collide();
+      this.distance += this.ship.speed * dt;
+      // Camera direction — after ship.update so we overwrite its follow.
+      this.cinematic.update(dt);
     } else if (this.state === STATE.TITLE || this.state === STATE.OVER) {
       // Drift camera slowly on menus for a cinematic feel.
       this.camera.position.x = Math.sin(this.time * 0.2) * 10;

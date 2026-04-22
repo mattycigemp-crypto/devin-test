@@ -241,6 +241,7 @@ export class Ship {
   }
 
   applyDamage(amount, audio) {
+    if (this._cinematic) return false;
     if (this._invuln > 0 || this.shieldTime > 0 || !this.alive) return false;
     this.hull = clamp(this.hull - amount, 0, this.maxHull);
     this._invuln = 0.8;

@@ -98,9 +98,20 @@
       </div>
       <div class="button-row">
         <button id="start-btn" class="btn-primary" aria-label="Engage and start the game">ENGAGE</button>
+        <button id="cinematic-btn" class="btn-ghost" aria-label="Watch an auto-piloted cinematic">CINEMATIC MODE</button>
         <button id="settings-btn" class="btn-ghost" aria-label="Open settings">SETTINGS</button>
       </div>
       <p class="hint">Destroy asteroids, collect crystals, survive the nebula. Bosses appear every third wave.</p>
+    </div>
+
+    <div id="cinematic-overlay" aria-hidden="true">
+      <div class="letterbox top"></div>
+      <div class="letterbox bottom"></div>
+      <div id="cinematic-title">
+        <h1>NEBULA RIDER</h1>
+        <p>A PROCEDURAL SHORT</p>
+      </div>
+      <div id="cinematic-exit-hint"><kbd>ESC</kbd> TO EXIT</div>
     </div>
 
     <div id="pause-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
