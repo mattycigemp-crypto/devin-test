@@ -166,9 +166,6 @@
           <label class="row check">
             <input id="set-touch" type="checkbox" /><span>Show on-screen touch controls</span>
           </label>
-          <label class="row check">
-            <input id="set-autofire" type="checkbox" /><span>Auto-fire (dev)</span>
-          </label>
         </section>
 
         <section class="settings-group" aria-label="Accessibility settings">
@@ -179,6 +176,19 @@
           <label class="row check">
             <input id="set-reducedmotion" type="checkbox" /><span>Reduced motion (no shake / aberration / grain)</span>
           </label>
+        </section>
+
+        <section id="admin-section" class="settings-group admin hidden" aria-label="Admin settings">
+          <h3>ADMIN <span class="admin-badge">UNLOCKED</span></h3>
+          <p class="admin-hint">Hidden dev tools. Not intended for normal play.</p>
+          <label class="row check">
+            <input id="set-autofire" type="checkbox" /><span>Auto-fire (continuous lasers, for scripted testing)</span>
+          </label>
+          <div class="row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap;">
+            <button id="admin-copy-link" class="btn-ghost btn-small" type="button" aria-label="Copy share-link with current admin flags">COPY ADMIN LINK</button>
+            <button id="admin-lock" class="btn-ghost btn-small" type="button" aria-label="Lock admin panel">LOCK</button>
+          </div>
+          <p id="admin-link-feedback" class="admin-hint" aria-live="polite"></p>
         </section>
 
         <section class="settings-group leaderboard" aria-label="Local leaderboard">

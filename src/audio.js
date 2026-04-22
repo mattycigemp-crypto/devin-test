@@ -43,6 +43,10 @@ export class Audio {
 
   _applyMaster() {
     if (!this.master) return;
+    // Mirror the canonical value from settings into this.muted so external
+    // callers (the M hotkey, UI toggle, etc.) stay in sync with a single source
+    // of truth.
+    this.muted = !!settings.get('muted');
     const target = this.muted ? 0 : settings.get('masterVolume');
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);

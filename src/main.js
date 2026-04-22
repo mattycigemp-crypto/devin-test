@@ -147,15 +147,118 @@ class Game {
     bindCheckbox('set-colorblind', 'colorblind');
     bindCheckbox('set-reducedmotion', 'reducedMotion');
     bindCheckbox('set-autofire', 'autofire');
-    bindCheckbox('set-touch', null); // handled separately below
     const touchEl = document.getElementById('set-touch');
     if (touchEl) {
       touchEl.checked = this.touch.enabled;
       touchEl.addEventListener('change', () => this.touch.setEnabled(touchEl.checked));
     }
     settings.onChange(() => this._syncSettingsUI());
+
+    this._initAdminPanel();
+
     this._syncSettingsUI();
     this._renderLeaderboard();
+  }
+
+  // --- Hidden admin panel ---
+  // Unlocked by either (a) tapping the NEBULA title 5 times within 3s on the
+  // start screen, or (b) pressing Ctrl+Shift+D anywhere. URL overrides
+  // (?autofire=1, ?touch=1) also auto-unlock to keep scripted testing easy.
+  _initAdminPanel() {
+    const section = document.getElementById('admin-section');
+    if (!section) return;
+    this._adminUnlocked = this._readAdminUnlocked();
+    this._refreshAdminUI();
+
+    // Secret title taps.
+    const title = document.querySelector('#start-screen .title-main');
+    if (title) {
+      let taps = 0;
+      let firstTap = 0;
+      title.addEventListener('click', () => {
+        const now = performance.now();
+        if (now - firstTap > 3000) { taps = 0; firstTap = now; }
+        taps++;
+        if (taps >= 5) {
+          taps = 0;
+          this._setAdminUnlocked(true);
+          this._openSettings();
+          this._flashAdminFeedback('Admin panel unlocked.');
+        }
+      });
+    }
+    // Ctrl+Shift+D toggles admin.
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
+        e.preventDefault();
+        this._setAdminUnlocked(!this._adminUnlocked);
+        if (this._adminUnlocked) {
+          this._openSettings();
+          this._flashAdminFeedback('Admin panel unlocked.');
+        }
+      }
+    });
+
+    const lockBtn = document.getElementById('admin-lock');
+    if (lockBtn) lockBtn.addEventListener('click', () => {
+      this._setAdminUnlocked(false);
+      this._flashAdminFeedback('Admin panel locked.');
+    });
+
+    const copyBtn = document.getElementById('admin-copy-link');
+    if (copyBtn) copyBtn.addEventListener('click', () => this._copyAdminLink());
+
+    // Auto-unlock if URL carried any admin flags, so the user can find the
+    // panel without reading the source.
+    const qp = new URLSearchParams(window.location.search);
+    if (qp.get('autofire') === '1' || qp.get('touch') === '1' || qp.get('admin') === '1') {
+      this._setAdminUnlocked(true);
+    }
+  }
+
+  _readAdminUnlocked() {
+    try { return sessionStorage.getItem('nebula-rider.admin.unlocked') === '1'; } catch (_) { return false; }
+  }
+
+  _setAdminUnlocked(v) {
+    this._adminUnlocked = !!v;
+    try {
+      if (this._adminUnlocked) sessionStorage.setItem('nebula-rider.admin.unlocked', '1');
+      else sessionStorage.removeItem('nebula-rider.admin.unlocked');
+    } catch (_) { /* ignore */ }
+    this._refreshAdminUI();
+  }
+
+  _refreshAdminUI() {
+    const section = document.getElementById('admin-section');
+    if (section) section.classList.toggle('hidden', !this._adminUnlocked);
+  }
+
+  _flashAdminFeedback(msg) {
+    const el = document.getElementById('admin-link-feedback');
+    if (!el) return;
+    el.textContent = msg;
+    clearTimeout(this._adminFeedbackTimer);
+    this._adminFeedbackTimer = setTimeout(() => { el.textContent = ''; }, 2400);
+  }
+
+  _copyAdminLink() {
+    const params = new URLSearchParams();
+    if (settings.get('autofire')) params.set('autofire', '1');
+    if (settings.get('colorblind')) params.set('colorblind', '1');
+    if (settings.get('reducedMotion')) params.set('reducedMotion', '1');
+    if (this.touch.enabled) params.set('touch', '1');
+    params.set('admin', '1');
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const link = params.toString() ? `${base}?${params.toString()}` : base;
+    const done = (msg) => this._flashAdminFeedback(msg);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link)
+        .then(() => done(`Copied: ${link}`))
+        .catch(() => done(`Copy blocked — link: ${link}`));
+    } else {
+      done(`Link: ${link}`);
+    }
   }
 
   _syncSettingsUI() {
@@ -176,10 +279,28 @@ class Game {
     this._settingsReturnState = this.state;
     // Pause actively-running games so settings changes can be previewed safely.
     if (this.state === STATE.PLAYING) this._pause(/* silent */ true);
+    // Hide source overlays so the settings panel isn't obscured.
+    this._settingsSourceOverlay = null;
+    for (const name of ['start', 'pause', 'over']) {
+      const el = this.hud.el[name];
+      if (el && !el.classList.contains('hidden')) {
+        this._settingsSourceOverlay = name;
+        this.hud.hide(name);
+        break;
+      }
+    }
     this._renderLeaderboard();
     this.hud.show('settings');
+    // Focus the first interactive control for keyboard users.
+    setTimeout(() => document.getElementById('settings-close')?.focus(), 0);
   }
-  _closeSettings() { this.hud.hide('settings'); }
+  _closeSettings() {
+    this.hud.hide('settings');
+    // Restore the overlay that was visible when settings was opened.
+    const src = this._settingsSourceOverlay;
+    if (src) this.hud.show(src);
+    this._settingsSourceOverlay = null;
+  }
 
   _renderLeaderboard() {
     const list = document.getElementById('leaderboard-list');
@@ -332,7 +453,8 @@ class Game {
 
     this._enemySpawnTimer -= dt;
     if (this.wave >= 2 && this._enemySpawnTimer <= 0) {
-      const count = 1 + (this.wave >= 4 ? randi(0, 1) : 0) + (this.wave >= 7 ? randi(0, 1) : 0);
+      // randi is exclusive of its upper bound, so randi(0, 2) yields {0, 1}.
+      const count = 1 + (this.wave >= 4 ? randi(0, 2) : 0) + (this.wave >= 7 ? randi(0, 2) : 0);
       for (let i = 0; i < count; i++) this._spawnEnemy();
       const base = rand(4, 8) - Math.min(3, this.wave * 0.25);
       this._enemySpawnTimer = Math.max(1.5, base);
