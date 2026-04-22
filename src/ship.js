@@ -1,6 +1,7 @@
 // Player ship: model, physics, camera-follow, particle trails.
 import * as THREE from 'three';
 import { clamp, damp, lerp, rand, tmp } from './utils.js';
+import { settings } from './settings.js';
 
 export class Ship {
   constructor(scene) {
@@ -38,6 +39,12 @@ export class Ship {
     this._fireCooldown = 0;
     this._alternator = 0;
     this.alive = true;
+
+    // Powerup timers (seconds). 0 = inactive.
+    this.shieldTime = 0;      // full invulnerability + visible bubble
+    this.rapidFireTime = 0;   // halves fire cooldown
+    this.multiShotTime = 0;   // fires 3 bullets in a spread
+    this._shieldMesh = null;
 
     // For camera follow
     this._cameraOffset = new THREE.Vector3(0, 2.2, 7.5);
@@ -107,6 +114,30 @@ export class Ship {
     light.position.set(0, 0, 1.5);
     this.body.add(light);
     this._engineLight = light;
+
+    // Shield bubble (hidden by default).
+    const shieldGeo = new THREE.IcosahedronGeometry(1.8, 2);
+    const shieldMat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uOpacity: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec3 vN; varying vec3 vP;
+        void main() { vN = normalize(normalMatrix * normal); vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float; varying vec3 vN; varying vec3 vP; uniform float uTime; uniform float uOpacity;
+        void main() {
+          float fres = pow(1.0 - abs(vN.z), 2.0);
+          float grid = abs(sin(vP.x * 3.0 + uTime * 1.1)) * abs(sin(vP.y * 3.0 - uTime * 0.8)) * abs(sin(vP.z * 3.0 + uTime * 0.5));
+          vec3 col = mix(vec3(0.35, 0.8, 1.0), vec3(0.5, 1.0, 0.85), fres);
+          float a = (fres * 0.7 + grid * 0.35) * uOpacity;
+          gl_FragColor = vec4(col, a);
+        }
+      `,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    this._shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+    this._shieldMesh.visible = false;
+    this.group.add(this._shieldMesh);
 
     // Engine glow plate
     const engineGlowGeo = new THREE.CircleGeometry(0.28, 24);
@@ -210,7 +241,7 @@ export class Ship {
   }
 
   applyDamage(amount, audio) {
-    if (this._invuln > 0 || !this.alive) return false;
+    if (this._invuln > 0 || this.shieldTime > 0 || !this.alive) return false;
     this.hull = clamp(this.hull - amount, 0, this.maxHull);
     this._invuln = 0.8;
     this._shake += 0.5;
@@ -218,6 +249,16 @@ export class Ship {
     if (this.hull <= 0) { this.alive = false; return true; }
     return false;
   }
+
+  // Powerup helpers -------------------------------------------------
+  grantShield(seconds = 8) { this.shieldTime = Math.max(this.shieldTime, seconds); }
+  grantRapidFire(seconds = 10) { this.rapidFireTime = Math.max(this.rapidFireTime, seconds); }
+  grantMultiShot(seconds = 10) { this.multiShotTime = Math.max(this.multiShotTime, seconds); }
+  repair(amount) { this.hull = clamp(this.hull + amount, 0, this.maxHull); }
+
+  shieldActive() { return this.shieldTime > 0; }
+  rapidFireActive() { return this.rapidFireTime > 0; }
+  multiShotActive() { return this.multiShotTime > 0; }
 
   reset() {
     this.group.position.set(0, 0, 0);
@@ -228,9 +269,13 @@ export class Ship {
     this.heat = 0;
     this._invuln = 0;
     this._fireCooldown = 0;
+    this.shieldTime = 0;
+    this.rapidFireTime = 0;
+    this.multiShotTime = 0;
     this.alive = true;
     this.body.quaternion.identity();
     this.body.rotation.y = Math.PI;
+    if (this._shieldMesh) { this._shieldMesh.visible = false; }
   }
 
   update(dt, input, camera) {
@@ -243,11 +288,15 @@ export class Ship {
 
     const ax = input.axes();
     const mouse = input.mouse;
+    const ms = settings.get('mouseSensitivity');
+    const rs = settings.get('rollSensitivity');
+    const invertY = settings.get('invertY') ? -1 : 1;
+    const mouseY = invertY * mouse.ny;
 
     // Blend keyboard + mouse input. Mouse provides fine aim offsets.
-    const targetYawRate = -ax.x * 1.4 + -mouse.nx * 1.0;
-    const targetPitchRate = -ax.y * 1.1 + mouse.ny * 0.6;
-    const targetRoll = -ax.x * 0.6 + -mouse.nx * 0.45 + ax.roll * 0.8;
+    const targetYawRate = -ax.x * 1.4 + -mouse.nx * 1.0 * ms;
+    const targetPitchRate = -ax.y * 1.1 + mouseY * 0.6 * ms;
+    const targetRoll = -ax.x * 0.6 + -mouse.nx * 0.45 * ms + ax.roll * 0.8 * rs;
 
     this.yaw += targetYawRate * dt;
     this.pitch = clamp(this.pitch + targetPitchRate * dt, -1.2, 1.2);
@@ -286,6 +335,21 @@ export class Ship {
     // Invulnerability timer & hit flash
     this._invuln = Math.max(0, this._invuln - dt);
 
+    // Powerup timers
+    this.shieldTime = Math.max(0, this.shieldTime - dt);
+    this.rapidFireTime = Math.max(0, this.rapidFireTime - dt);
+    this.multiShotTime = Math.max(0, this.multiShotTime - dt);
+    if (this._shieldMesh) {
+      const on = this.shieldTime > 0;
+      this._shieldMesh.visible = on;
+      if (on) {
+        this._shieldMesh.material.uniforms.uTime.value += dt;
+        // Fade out in the final 0.8s
+        const fade = this.shieldTime < 0.8 ? this.shieldTime / 0.8 : 1;
+        this._shieldMesh.material.uniforms.uOpacity.value = fade;
+      }
+    }
+
     // Engine glow pulsing
     const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.02);
     this._engineLight.intensity = (boostPressed ? 4 : 1.8) * pulse;
@@ -299,8 +363,9 @@ export class Ship {
     // Camera follow
     const offset = tmp.v0.copy(this._cameraOffset).applyQuaternion(this.group.quaternion);
     const lookOffset = tmp.v1.copy(this._cameraLookOffset).applyQuaternion(this.group.quaternion);
-    const shakeX = (Math.random() - 0.5) * this._shake * 0.4;
-    const shakeY = (Math.random() - 0.5) * this._shake * 0.4;
+    const motionScale = settings.get('reducedMotion') ? 0 : 1;
+    const shakeX = (Math.random() - 0.5) * this._shake * 0.4 * motionScale;
+    const shakeY = (Math.random() - 0.5) * this._shake * 0.4 * motionScale;
     camera.position.x = damp(camera.position.x, this.group.position.x + offset.x + shakeX, 10, dt);
     camera.position.y = damp(camera.position.y, this.group.position.y + offset.y + shakeY, 10, dt);
     camera.position.z = damp(camera.position.z, this.group.position.z + offset.z, 10, dt);
@@ -326,8 +391,8 @@ export class Ship {
   }
 
   registerShot() {
-    this._fireCooldown = 0.08;
-    this.heat = clamp(this.heat + 6, 0, this.maxHeat);
+    this._fireCooldown = this.rapidFireActive() ? 0.04 : 0.08;
+    this.heat = clamp(this.heat + (this.rapidFireActive() ? 3.5 : 6), 0, this.maxHeat);
     this._alternator = (this._alternator + 1) % 2;
   }
 

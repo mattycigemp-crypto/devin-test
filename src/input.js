@@ -1,4 +1,12 @@
-// Keyboard + mouse + pointer-lock input manager.
+// Keyboard + mouse + touch input manager.
+// Desktop: tracks keys, buttons, and normalized mouse position over the canvas.
+// Touch: a companion `TouchControls` instance pushes virtual-joystick axes and a
+// fire latch into this manager via setTouchAxes / setTouchFire.
+// Autofire: if settings.autofire is true, firing() always returns true while
+// enabled (convenience for scripted/automated testing).
+
+import { settings } from './settings.js';
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -7,6 +15,11 @@ export class Input {
     this.mouse = { x: 0, y: 0, nx: 0, ny: 0, dx: 0, dy: 0 };
     this.buttons = new Set();
     this.enabled = false;
+
+    // Touch-input surface (set externally by TouchControls).
+    this._touchAxes = { x: 0, y: 0 };
+    this._touchFire = false;
+    this._touchBoost = false;
 
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
@@ -42,24 +55,51 @@ export class Input {
     });
   }
 
-  setEnabled(v) { this.enabled = v; if (!v) { this.keys.clear(); this.buttons.clear(); } }
+  setEnabled(v) {
+    this.enabled = v;
+    if (!v) {
+      this.keys.clear();
+      this.buttons.clear();
+      this._touchAxes.x = 0; this._touchAxes.y = 0;
+      this._touchFire = false;
+      this._touchBoost = false;
+    }
+  }
 
   consumeJustPressed(code) {
     if (this.justPressed.has(code)) { this.justPressed.delete(code); return true; }
     return false;
   }
 
-  // Normalized steering axes from keyboard.
+  // --- Touch surface (called by TouchControls) ---
+  setTouchAxes(x, y) { this._touchAxes.x = x; this._touchAxes.y = y; }
+  setTouchFire(v) { this._touchFire = !!v; }
+  setTouchBoost(v) { this._touchBoost = !!v; }
+
+  // Normalized steering axes from keyboard + touch (touch dominates when active).
   axes() {
     const k = this.keys;
-    const x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
-    const y = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
+    let x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    let y = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
     const roll = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+    if (this._touchAxes.x !== 0 || this._touchAxes.y !== 0) {
+      x = this._touchAxes.x;
+      y = this._touchAxes.y;
+    }
+    if (settings.get('invertY')) y = -y;
     return { x, y, roll };
   }
 
-  firing() { return this.enabled && (this.keys.has('Space') || this.buttons.has(0)); }
-  boosting() { return this.enabled && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')); }
+  firing() {
+    if (!this.enabled) return false;
+    if (settings.get('autofire')) return true;
+    return this.keys.has('Space') || this.buttons.has(0) || this._touchFire;
+  }
+
+  boosting() {
+    if (!this.enabled) return false;
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this._touchBoost;
+  }
 
   endFrame() { this.justPressed.clear(); }
 }

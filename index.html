@@ -18,13 +18,13 @@
     </script>
   </head>
   <body>
-    <canvas id="game" aria-label="Nebula Rider game canvas"></canvas>
+    <canvas id="game" aria-label="Nebula Rider game canvas" tabindex="-1"></canvas>
 
-    <div id="hud" class="hidden">
+    <div id="hud" class="hidden" role="region" aria-label="Gameplay HUD">
       <div class="hud-top">
         <div class="stat">
           <div class="label">SCORE</div>
-          <div id="score" class="value">0</div>
+          <div id="score" class="value" aria-live="polite">0</div>
         </div>
         <div class="stat center">
           <div class="label">WAVE</div>
@@ -39,17 +39,24 @@
       <div class="hud-bottom">
         <div class="meter">
           <div class="meter-label">HULL</div>
-          <div class="bar"><div id="hull-bar" class="bar-fill hull"></div></div>
+          <div class="bar" role="progressbar" aria-label="Hull integrity"><div id="hull-bar" class="bar-fill hull"></div></div>
         </div>
         <div class="meter">
           <div class="meter-label">BOOST</div>
-          <div class="bar"><div id="boost-bar" class="bar-fill boost"></div></div>
+          <div class="bar" role="progressbar" aria-label="Boost energy"><div id="boost-bar" class="bar-fill boost"></div></div>
         </div>
         <div class="meter">
           <div class="meter-label">HEAT</div>
-          <div class="bar"><div id="heat-bar" class="bar-fill heat"></div></div>
+          <div class="bar" role="progressbar" aria-label="Weapon heat"><div id="heat-bar" class="bar-fill heat"></div></div>
         </div>
       </div>
+
+      <div id="boss-bar-wrap" class="hidden" role="region" aria-label="Boss health">
+        <div id="boss-label">BOSS</div>
+        <div class="boss-bar-outer"><div id="boss-bar" class="boss-bar-fill"></div></div>
+      </div>
+
+      <div id="powerups" class="powerups" aria-live="polite" aria-label="Active powerups"></div>
 
       <div id="crosshair" aria-hidden="true">
         <div class="ch-ring"></div>
@@ -62,7 +69,7 @@
 
       <div id="damage-vignette" aria-hidden="true"></div>
 
-      <div id="combo" class="hidden">
+      <div id="combo" class="hidden" aria-hidden="true">
         <span id="combo-x">x2</span>
         <span class="combo-label">COMBO</span>
       </div>
@@ -70,9 +77,9 @@
       <div id="pickups" aria-live="polite"></div>
     </div>
 
-    <div id="start-screen" class="overlay">
+    <div id="start-screen" class="overlay" role="dialog" aria-modal="true" aria-labelledby="start-title">
       <div class="title-wrap">
-        <h1 class="title">
+        <h1 class="title" id="start-title">
           <span class="title-main">NEBULA</span>
           <span class="title-sub">RIDER</span>
         </h1>
@@ -85,32 +92,111 @@
           <div><kbd>Space</kbd> / <kbd>Click</kbd></div><div>Fire lasers</div>
           <div><kbd>Shift</kbd></div><div>Boost</div>
           <div><kbd>Q</kbd> / <kbd>E</kbd></div><div>Roll</div>
-          <div><kbd>P</kbd></div><div>Pause</div>
+          <div><kbd>P</kbd> / <kbd>Esc</kbd></div><div>Pause</div>
           <div><kbd>M</kbd></div><div>Mute</div>
         </div>
       </div>
-      <button id="start-btn" class="btn-primary">ENGAGE</button>
-      <p class="hint">Destroy asteroids, collect crystals, survive the nebula.</p>
+      <div class="button-row">
+        <button id="start-btn" class="btn-primary" aria-label="Engage and start the game">ENGAGE</button>
+        <button id="settings-btn" class="btn-ghost" aria-label="Open settings">SETTINGS</button>
+      </div>
+      <p class="hint">Destroy asteroids, collect crystals, survive the nebula. Bosses appear every third wave.</p>
     </div>
 
-    <div id="pause-screen" class="overlay hidden">
-      <h2>PAUSED</h2>
-      <button id="resume-btn" class="btn-primary">RESUME</button>
-      <button id="quit-btn" class="btn-ghost">QUIT</button>
+    <div id="pause-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+      <h2 id="pause-title">PAUSED</h2>
+      <p class="muted">Take a breath. The nebula isn't going anywhere.</p>
+      <div class="button-row">
+        <button id="resume-btn" class="btn-primary" aria-label="Resume game">RESUME</button>
+        <button id="settings-btn-pause" class="btn-ghost" aria-label="Open settings">SETTINGS</button>
+        <button id="quit-btn" class="btn-ghost" aria-label="Quit to title">QUIT</button>
+      </div>
+      <p class="hint">Tip: hold <kbd>Shift</kbd> to boost through tight gaps.</p>
     </div>
 
-    <div id="gameover-screen" class="overlay hidden">
-      <h2 class="go-title">HULL BREACH</h2>
+    <div id="gameover-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="go-title">
+      <h2 class="go-title" id="go-title">HULL BREACH</h2>
+      <div id="final-rank" class="rank-badge hidden" aria-live="polite"></div>
       <div class="go-stats">
         <div><span class="label">FINAL SCORE</span><span id="final-score" class="value">0</span></div>
         <div><span class="label">WAVE REACHED</span><span id="final-wave" class="value">0</span></div>
         <div><span class="label">DISTANCE</span><span id="final-distance" class="value">0 km</span></div>
       </div>
-      <button id="restart-btn" class="btn-primary">RE-ENGAGE</button>
+      <div class="button-row">
+        <button id="restart-btn" class="btn-primary" aria-label="Restart the game">RE-ENGAGE</button>
+        <button id="settings-btn-over" class="btn-ghost" aria-label="Open settings">SETTINGS</button>
+      </div>
     </div>
 
-    <div id="loading" class="overlay">
-      <div class="loading-ring"></div>
+    <div id="settings-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <h2 id="settings-title">SETTINGS</h2>
+      <div class="settings-body">
+        <section class="settings-group" aria-label="Audio settings">
+          <h3>AUDIO</h3>
+          <label class="row">
+            <span>Master volume</span>
+            <input id="set-master" type="range" min="0" max="1" step="0.01" aria-label="Master volume" />
+          </label>
+          <label class="row">
+            <span>Music volume</span>
+            <input id="set-music" type="range" min="0" max="1" step="0.01" aria-label="Music volume" />
+          </label>
+          <label class="row">
+            <span>SFX volume</span>
+            <input id="set-sfx" type="range" min="0" max="1" step="0.01" aria-label="SFX volume" />
+          </label>
+          <label class="row check">
+            <input id="set-mute" type="checkbox" /><span>Mute all</span>
+          </label>
+        </section>
+
+        <section class="settings-group" aria-label="Controls settings">
+          <h3>CONTROLS</h3>
+          <label class="row">
+            <span>Mouse sensitivity</span>
+            <input id="set-mouse" type="range" min="0.1" max="2" step="0.05" aria-label="Mouse sensitivity" />
+          </label>
+          <label class="row">
+            <span>Roll sensitivity</span>
+            <input id="set-roll" type="range" min="0.1" max="2" step="0.05" aria-label="Roll sensitivity" />
+          </label>
+          <label class="row check">
+            <input id="set-inverty" type="checkbox" /><span>Invert Y-axis</span>
+          </label>
+          <label class="row check">
+            <input id="set-touch" type="checkbox" /><span>Show on-screen touch controls</span>
+          </label>
+          <label class="row check">
+            <input id="set-autofire" type="checkbox" /><span>Auto-fire (dev)</span>
+          </label>
+        </section>
+
+        <section class="settings-group" aria-label="Accessibility settings">
+          <h3>ACCESSIBILITY</h3>
+          <label class="row check">
+            <input id="set-colorblind" type="checkbox" /><span>Colorblind palette (high contrast)</span>
+          </label>
+          <label class="row check">
+            <input id="set-reducedmotion" type="checkbox" /><span>Reduced motion (no shake / aberration / grain)</span>
+          </label>
+        </section>
+
+        <section class="settings-group leaderboard" aria-label="Local leaderboard">
+          <h3>LOCAL LEADERBOARD</h3>
+          <ol id="leaderboard-list" class="leaderboard-list">
+            <li class="empty">No runs recorded yet.</li>
+          </ol>
+          <button id="leaderboard-clear" class="btn-ghost btn-small" type="button">Clear leaderboard</button>
+        </section>
+      </div>
+      <div class="button-row">
+        <button id="settings-close" class="btn-primary" type="button" aria-label="Close settings">DONE</button>
+        <button id="settings-reset" class="btn-ghost" type="button" aria-label="Reset settings to defaults">RESET DEFAULTS</button>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay" aria-live="polite">
+      <div class="loading-ring" aria-hidden="true"></div>
       <p>Calibrating inertial dampeners…</p>
     </div>
 
